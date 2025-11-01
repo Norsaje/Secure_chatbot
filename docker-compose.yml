@@ -1,0 +1,85 @@
+version: "3.9"
+services:
+  audit-service:
+    build:
+      context: .
+      dockerfile: audit-service/Dockerfile
+    environment:
+      AUDIT_LOG_FILE: /logs/audit.log
+    volumes:
+      - ./logs:/logs
+    ports:
+      - "8000:8000"
+
+  llm-gateway:
+    build:
+      context: .
+      dockerfile: llm-gateway/Dockerfile
+    environment:
+      SERVICE_ACCOUNT_ID: ${SERVICE_ACCOUNT_ID}
+      KEY_ID: ${KEY_ID}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+      FOLDER_ID: ${FOLDER_ID}
+      MODEL_NAME: yandexgpt-lite
+      SYSTEM_PROMPT: "Ты помощник, который отвечает кратко и понятно."
+    ports:
+      - "8001:8001"
+
+  moderation-service:
+    build:
+      context: .
+      dockerfile: moderation-service/Dockerfile
+    environment:
+      SERVICE_ACCOUNT_ID: ${SERVICE_ACCOUNT_ID}
+      KEY_ID: ${KEY_ID}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+      FOLDER_ID: ${FOLDER_ID}
+      MODEL_NAME: yandexgpt-lite
+    ports:
+      - "8002:8002"
+
+  rag-service:
+    build:
+      context: .
+      dockerfile: rag-service/Dockerfile
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_PREFIX: ${S3_PREFIX}
+      EMBEDDINGS_MODEL: sentence-transformers/all-MiniLM-L6-v2
+    ports:
+      - "8003:8003"
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    environment:
+      MODERATION_URL: http://moderation-service:8002
+      RAG_URL: http://rag-service:8003
+      LLM_URL: http://llm-gateway:8001
+      AUDIT_URL: http://audit-service:8000
+      ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN}
+    ports:
+      - "8004:8004"
+    depends_on:
+      - moderation-service
+      - rag-service
+      - llm-gateway
+      - audit-service
+
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: telegram-bot/Dockerfile
+    environment:
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      ORCHESTRATOR_URL: http://orchestrator:8004
+    depends_on:
+      - orchestrator
+    # Telegram bot does not expose ports; it communicates with Telegram API
+
+volumes:
+  logs:
